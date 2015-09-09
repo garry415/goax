@@ -63,9 +63,9 @@ const (
 )
 
 type KeyExchange struct {
-	IdentityPublic [32]byte `bencode:"identity"`
-	Dh             [32]byte `bencode:"dh"`
-	Dh1            [32]byte `bencode:"dh1"`
+	IdentityPublic []byte `bencode:"identity"`
+	Dh             []byte `bencode:"dh"`
+	Dh1            []byte `bencode:"dh1"`
 }
 
 // MarshalJSON makes the KeyExchange a json.Marshaler by hex-ing fields
@@ -76,9 +76,9 @@ func (k KeyExchange) MarshalJSON() ([]byte, error) {
 		Dh             string `json:"dh"`
 		Dh1            string `json:"dh1"`
 	}{
-		IdentityPublic: hex.EncodeToString(k.IdentityPublic[:]),
-		Dh:             hex.EncodeToString(k.Dh[:]),
-		Dh1:            hex.EncodeToString(k.Dh1[:]),
+		IdentityPublic: hex.EncodeToString(k.IdentityPublic),
+		Dh:             hex.EncodeToString(k.Dh),
+		Dh1:            hex.EncodeToString(k.Dh1),
 	}
 
 	return json.Marshal(hexified)
@@ -97,7 +97,6 @@ func (k *KeyExchange) UnmarshalJSON(in []byte) error {
 	if err != nil {
 		return err
 	}
-
 	idpub, err := hex.DecodeString(h.IdentityPublic)
 	if err != nil {
 		return err
@@ -110,10 +109,9 @@ func (k *KeyExchange) UnmarshalJSON(in []byte) error {
 	if err != nil {
 		return err
 	}
-
-	copy(k.IdentityPublic[:], idpub)
-	copy(k.Dh[:], dh)
-	copy(k.Dh1[:], dh1)
+	k.IdentityPublic = idpub
+	k.Dh = dh
+	k.Dh1 = dh1
 
 	return nil
 }
@@ -168,13 +166,23 @@ func (r *Ratchet) randBytes(buf []byte) {
 	}
 }
 
-func New(rand io.Reader, myPriv [32]byte) *Ratchet {
+func toArray(sl []byte) *[32]byte {
+	var tmp [32]byte
+	copy(tmp[:], sl)
+	return &tmp
+}
+
+func toSlice(ar [32]byte) []byte {
+	return ar[:]
+}
+
+func New(rand io.Reader, myPriv []byte) *Ratchet {
 	r := &Ratchet{
 		rand:              rand,
 		kxPrivate0:        new([32]byte),
 		kxPrivate1:        new([32]byte),
 		saved:             make(map[[32]byte]map[uint32]savedKey),
-		myIdentityPrivate: myPriv,
+		myIdentityPrivate: *toArray(myPriv),
 	}
 
 	r.randBytes(r.kxPrivate0[:])
@@ -196,9 +204,9 @@ func (r *Ratchet) GetKeyExchangeMaterial() (kx KeyExchange, err error) {
 	curve25519.ScalarBaseMult(&myIdentity, &r.myIdentityPrivate)
 
 	kx = KeyExchange{
-		IdentityPublic: myIdentity,
-		Dh:             public0,
-		Dh1:            public1,
+		IdentityPublic: toSlice(myIdentity),
+		Dh:             toSlice(public0),
+		Dh1:            toSlice(public1),
 	}
 
 	return
