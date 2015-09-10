@@ -37,12 +37,6 @@ import (
 )
 
 func pairedRatchet() (a, b *Ratchet) {
-	// var privA, privB []byte
-	// privA = make([]byte, 32)
-	// privB = make([]byte, 32)
-	// io.ReadFull(rand.Reader, privA)
-	// io.ReadFull(rand.Reader, privB)
-
 	var privA, privB [32]byte
 	io.ReadFull(rand.Reader, privA[:])
 	io.ReadFull(rand.Reader, privB[:])
@@ -56,10 +50,10 @@ func pairedRatchet() (a, b *Ratchet) {
 	if err != nil {
 		panic(err)
 	}
-	if err := a.CompleteKeyExchange(*kxB); err != nil {
+	if err := a.CompleteKeyExchange(kxB); err != nil {
 		panic(err)
 	}
-	if err := b.CompleteKeyExchange(*kxA); err != nil {
+	if err := b.CompleteKeyExchange(kxA); err != nil {
 		panic(err)
 	}
 

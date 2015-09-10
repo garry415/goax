@@ -238,7 +238,7 @@ var (
 
 // CompleteKeyExchange takes a KeyExchange message from the other party and
 // establishes the ratchet.
-func (r *Ratchet) CompleteKeyExchange(kx KeyExchange) error {
+func (r *Ratchet) CompleteKeyExchange(kx *KeyExchange) error {
 	if r.kxPrivate0 == nil {
 		return errors.New("ratchet: handshake already complete")
 	}
@@ -314,95 +314,6 @@ func (r *Ratchet) CompleteKeyExchange(kx KeyExchange) error {
 	return nil
 }
 
-// Encrypt acts like append() but appends an encrypted version of msg to out.
-func (r *Ratchet) Encrypt(msg []byte) []byte {
-	if r.ratchet {
-		r.randBytes(r.sendRatchetPrivate[:])
-		copy(r.sendHeaderKey[:], r.nextSendHeaderKey[:])
-
-		var sharedKey, keyMaterial [32]byte
-		curve25519.ScalarMult(&sharedKey, &r.sendRatchetPrivate, &r.recvRatchetPublic)
-		sha := sha256.New()
-		sha.Write(rootKeyUpdateLabel)
-		sha.Write(r.rootKey[:])
-		sha.Write(sharedKey[:])
-
-		sha.Sum(keyMaterial[:0])
-		h := hmac.New(sha256.New, keyMaterial[:])
-		deriveKey(&r.rootKey, rootKeyLabel, h)
-		deriveKey(&r.nextSendHeaderKey, sendHeaderKeyLabel, h)
-		deriveKey(&r.sendChainKey, chainKeyLabel, h)
-		r.prevSendCount, r.sendCount = r.sendCount, 0
-		r.ratchet = false
-	}
-
-	h := hmac.New(sha256.New, r.sendChainKey[:])
-	var messageKey [32]byte
-	deriveKey(&messageKey, messageKeyLabel, h)
-	deriveKey(&r.sendChainKey, chainKeyStepLabel, h)
-
-	var sendRatchetPublic [32]byte
-	curve25519.ScalarBaseMult(&sendRatchetPublic, &r.sendRatchetPrivate)
-	var header [headerSize]byte
-	var headerNonce, messageNonce [24]byte
-	r.randBytes(headerNonce[:])
-	r.randBytes(messageNonce[:])
-
-	binary.LittleEndian.PutUint32(header[0:4], r.sendCount)
-	binary.LittleEndian.PutUint32(header[4:8], r.prevSendCount)
-	copy(header[8:], sendRatchetPublic[:])
-	copy(header[nonceInHeaderOffset:], messageNonce[:])
-	out := make([]byte, len(headerNonce))
-	copy(out, headerNonce[:])
-	out = secretbox.Seal(out, header[:], &headerNonce, &r.sendHeaderKey)
-	r.sendCount++
-	return secretbox.Seal(out, msg, &messageNonce, &messageKey)
-}
-
-// trySavedKeys tries to decrypt ciphertext using keys saved for missing messages.
-func (r *Ratchet) trySavedKeys(ciphertext []byte) ([]byte, error) {
-	if len(ciphertext) < sealedHeaderSize {
-		return nil, errors.New("ratchet: header too small to be valid")
-	}
-
-	sealedHeader := ciphertext[:sealedHeaderSize]
-	var nonce [24]byte
-	copy(nonce[:], sealedHeader)
-	sealedHeader = sealedHeader[len(nonce):]
-
-	for headerKey, messageKeys := range r.saved {
-		header, ok := secretbox.Open(nil, sealedHeader, &nonce, &headerKey)
-		if !ok {
-			continue
-		}
-		if len(header) != headerSize {
-			continue
-		}
-		msgNum := binary.LittleEndian.Uint32(header[:4])
-		msgKey, ok := messageKeys[msgNum]
-		if !ok {
-			// This is a fairly common case: the message key might
-			// not have been saved because it's the next message
-			// key.
-			return nil, nil
-		}
-
-		sealedMessage := ciphertext[sealedHeaderSize:]
-		copy(nonce[:], header[nonceInHeaderOffset:])
-		msg, ok := secretbox.Open(nil, sealedMessage, &nonce, &msgKey.key)
-		if !ok {
-			return nil, errors.New("ratchet: corrupt message")
-		}
-		delete(messageKeys, msgNum)
-		if len(messageKeys) == 0 {
-			delete(r.saved, headerKey)
-		}
-		return msg, nil
-	}
-
-	return nil, nil
-}
-
 // saveKeys takes a header key, the current chain key, a received message
 // number and the expected message number and advances the chain key as needed.
 // It returns the message key for given given message number and the new chain
@@ -474,6 +385,51 @@ func isZeroKey(key *[32]byte) bool {
 	}
 
 	return x == 0
+}
+
+// Encrypt acts like append() but appends an encrypted version of msg to out.
+func (r *Ratchet) Encrypt(msg []byte) []byte {
+	if r.ratchet {
+		r.randBytes(r.sendRatchetPrivate[:])
+		copy(r.sendHeaderKey[:], r.nextSendHeaderKey[:])
+
+		var sharedKey, keyMaterial [32]byte
+		curve25519.ScalarMult(&sharedKey, &r.sendRatchetPrivate, &r.recvRatchetPublic)
+		sha := sha256.New()
+		sha.Write(rootKeyUpdateLabel)
+		sha.Write(r.rootKey[:])
+		sha.Write(sharedKey[:])
+
+		sha.Sum(keyMaterial[:0])
+		h := hmac.New(sha256.New, keyMaterial[:])
+		deriveKey(&r.rootKey, rootKeyLabel, h)
+		deriveKey(&r.nextSendHeaderKey, sendHeaderKeyLabel, h)
+		deriveKey(&r.sendChainKey, chainKeyLabel, h)
+		r.prevSendCount, r.sendCount = r.sendCount, 0
+		r.ratchet = false
+	}
+
+	h := hmac.New(sha256.New, r.sendChainKey[:])
+	var messageKey [32]byte
+	deriveKey(&messageKey, messageKeyLabel, h)
+	deriveKey(&r.sendChainKey, chainKeyStepLabel, h)
+
+	var sendRatchetPublic [32]byte
+	curve25519.ScalarBaseMult(&sendRatchetPublic, &r.sendRatchetPrivate)
+	var header [headerSize]byte
+	var headerNonce, messageNonce [24]byte
+	r.randBytes(headerNonce[:])
+	r.randBytes(messageNonce[:])
+
+	binary.LittleEndian.PutUint32(header[0:4], r.sendCount)
+	binary.LittleEndian.PutUint32(header[4:8], r.prevSendCount)
+	copy(header[8:], sendRatchetPublic[:])
+	copy(header[nonceInHeaderOffset:], messageNonce[:])
+	out := make([]byte, len(headerNonce))
+	copy(out, headerNonce[:])
+	out = secretbox.Seal(out, header[:], &headerNonce, &r.sendHeaderKey)
+	r.sendCount++
+	return secretbox.Seal(out, msg, &messageNonce, &messageKey)
 }
 
 func (r *Ratchet) Decrypt(ciphertext []byte) ([]byte, error) {
@@ -575,6 +531,50 @@ func (r *Ratchet) Decrypt(ciphertext []byte) ([]byte, error) {
 	r.ratchet = true
 
 	return msg, nil
+}
+
+// trySavedKeys tries to decrypt ciphertext using keys saved for missing messages.
+func (r *Ratchet) trySavedKeys(ciphertext []byte) ([]byte, error) {
+	if len(ciphertext) < sealedHeaderSize {
+		return nil, errors.New("ratchet: header too small to be valid")
+	}
+
+	sealedHeader := ciphertext[:sealedHeaderSize]
+	var nonce [24]byte
+	copy(nonce[:], sealedHeader)
+	sealedHeader = sealedHeader[len(nonce):]
+
+	for headerKey, messageKeys := range r.saved {
+		header, ok := secretbox.Open(nil, sealedHeader, &nonce, &headerKey)
+		if !ok {
+			continue
+		}
+		if len(header) != headerSize {
+			continue
+		}
+		msgNum := binary.LittleEndian.Uint32(header[:4])
+		msgKey, ok := messageKeys[msgNum]
+		if !ok {
+			// This is a fairly common case: the message key might
+			// not have been saved because it's the next message
+			// key.
+			return nil, nil
+		}
+
+		sealedMessage := ciphertext[sealedHeaderSize:]
+		copy(nonce[:], header[nonceInHeaderOffset:])
+		msg, ok := secretbox.Open(nil, sealedMessage, &nonce, &msgKey.key)
+		if !ok {
+			return nil, errors.New("ratchet: corrupt message")
+		}
+		delete(messageKeys, msgNum)
+		if len(messageKeys) == 0 {
+			delete(r.saved, headerKey)
+		}
+		return msg, nil
+	}
+
+	return nil, nil
 }
 
 func dup(key *[32]byte) []byte {
