@@ -46,7 +46,7 @@ func pairedRatchet() (a, b *Ratchet) {
 	var privA, privB [32]byte
 	io.ReadFull(rand.Reader, privA[:])
 	io.ReadFull(rand.Reader, privB[:])
-	a, b = New(rand.Reader, privA[:]), New(rand.Reader, privB[:])
+	a, b = New(privA[:]), New(privB[:])
 
 	kxA, err := a.GetKeyExchangeMaterial()
 	if err != nil {
@@ -207,7 +207,7 @@ func TestDrop(t *testing.T) {
 func TestMarshal(t *testing.T) {
 	var priv [32]byte
 	io.ReadFull(rand.Reader, priv[:])
-	ratchet := New(rand.Reader, priv[:])
+	ratchet := New(priv[:])
 
 	kx, err := ratchet.GetKeyExchangeMaterial()
 	if err != nil {

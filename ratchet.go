@@ -33,6 +33,7 @@ package goax
 import (
 	"bytes"
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
@@ -176,9 +177,9 @@ func toSlice(ar [32]byte) []byte {
 	return ar[:]
 }
 
-func New(rand io.Reader, myPriv []byte) *Ratchet {
+func New(myPriv []byte) *Ratchet {
 	r := &Ratchet{
-		rand:              rand,
+		rand:              rand.Reader,
 		kxPrivate0:        new([32]byte),
 		kxPrivate1:        new([32]byte),
 		saved:             make(map[[32]byte]map[uint32]savedKey),
