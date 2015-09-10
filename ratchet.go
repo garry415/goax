@@ -194,9 +194,9 @@ func New(myPriv []byte) *Ratchet {
 
 // GetKeyExchangeMaterial returns key exchange information from the
 // ratchet.
-func (r *Ratchet) GetKeyExchangeMaterial() (kx KeyExchange, err error) {
+func (r *Ratchet) GetKeyExchangeMaterial() (kx *KeyExchange, err error) {
 	if r.kxPrivate0 == nil || r.kxPrivate1 == nil {
-		return KeyExchange{}, errors.New("ratchet: handshake already complete")
+		return new(KeyExchange), errors.New("ratchet: handshake already complete")
 	}
 
 	var public0, public1, myIdentity [32]byte
@@ -204,7 +204,7 @@ func (r *Ratchet) GetKeyExchangeMaterial() (kx KeyExchange, err error) {
 	curve25519.ScalarBaseMult(&public1, r.kxPrivate1)
 	curve25519.ScalarBaseMult(&myIdentity, &r.myIdentityPrivate)
 
-	kx = KeyExchange{
+	kx = &KeyExchange{
 		IdentityPublic: toSlice(myIdentity),
 		Dh:             toSlice(public0),
 		Dh1:            toSlice(public1),

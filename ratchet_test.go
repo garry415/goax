@@ -56,10 +56,10 @@ func pairedRatchet() (a, b *Ratchet) {
 	if err != nil {
 		panic(err)
 	}
-	if err := a.CompleteKeyExchange(kxB); err != nil {
+	if err := a.CompleteKeyExchange(*kxB); err != nil {
 		panic(err)
 	}
-	if err := b.CompleteKeyExchange(kxA); err != nil {
+	if err := b.CompleteKeyExchange(*kxA); err != nil {
 		panic(err)
 	}
 
